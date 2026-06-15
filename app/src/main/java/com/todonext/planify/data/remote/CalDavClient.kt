@@ -28,7 +28,9 @@ data class CalDavTodo(
     val summary: String,
     val completed: Boolean,
     val due: Long?,
-    val priority: Int
+    val priority: Int,
+    val description: String? = null,
+    val categories: String? = null
 )
 
 data class PutResult(val href: String, val eTag: String?)
@@ -211,6 +213,8 @@ class CalDavClient(
         var completed = false
         var due: Long? = null
         var priority = 0
+        var description: String? = null
+        var categories: String? = null
 
         // Handle unfolded lines (RFC 5545: lines starting with space/tab are continuations)
         val unfoldedData = icalData
@@ -240,6 +244,12 @@ class CalDavClient(
                 trimmed.startsWith("SUMMARY:") -> {
                     summary = trimmed.substringAfter("SUMMARY:")
                 }
+                trimmed.startsWith("DESCRIPTION:") -> {
+                    description = trimmed.substringAfter("DESCRIPTION:")
+                }
+                trimmed.startsWith("CATEGORIES:") -> {
+                    categories = trimmed.substringAfter("CATEGORIES:")
+                }
                 trimmed.startsWith("STATUS:COMPLETED") -> {
                     completed = true
                 }
@@ -264,7 +274,9 @@ class CalDavClient(
             summary = summary,
             completed = completed,
             due = due,
-            priority = priority
+            priority = priority,
+            description = description,
+            categories = categories
         )
     }
 
@@ -285,6 +297,10 @@ class CalDavClient(
         sb.appendLine("CREATED:$now")
         sb.appendLine("LAST-MODIFIED:$now")
         sb.appendLine("SUMMARY:${escapeICalText(task.title)}")
+
+        task.description?.let { desc ->
+            sb.appendLine("DESCRIPTION:${escapeICalText(desc)}")
+        }
 
         if (task.isCompleted) {
             sb.appendLine("STATUS:COMPLETED")

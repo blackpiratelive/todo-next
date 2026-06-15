@@ -119,6 +119,16 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun updateTask(task: TaskEntity) {
+        viewModelScope.launch {
+            val updatedTask = task.copy(
+                lastModifiedLocally = System.currentTimeMillis(),
+                isSynced = false
+            )
+            taskDao.updateTask(updatedTask)
+        }
+    }
+
     fun deleteTask(task: TaskEntity) {
         viewModelScope.launch {
             taskDao.deleteTask(task)

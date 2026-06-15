@@ -14,6 +14,8 @@ data class TaskEntity(
     val dueDate: Long? = null,
     val priority: Int = 0,
     val label: String? = null,
+    val description: String? = null,
+    val isPinned: Boolean = false,
     val lastModifiedLocally: Long = System.currentTimeMillis(),
     val isSynced: Boolean = false
 )

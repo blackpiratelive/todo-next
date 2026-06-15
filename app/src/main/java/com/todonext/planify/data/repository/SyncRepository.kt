@@ -104,6 +104,8 @@ class SyncRepository(
                                 isCompleted = remoteTodo.completed,
                                 dueDate = remoteTodo.due,
                                 priority = remoteTodo.priority,
+                                label = remoteTodo.categories,
+                                description = remoteTodo.description,
                                 eTag = remoteTodo.eTag,
                                 isSynced = true
                             )
@@ -120,6 +122,8 @@ class SyncRepository(
                             isCompleted = remoteTodo.completed,
                             dueDate = remoteTodo.due,
                             priority = remoteTodo.priority,
+                            label = remoteTodo.categories,
+                            description = remoteTodo.description,
                             isSynced = true,
                             lastModifiedLocally = System.currentTimeMillis()
                         )

@@ -6,23 +6,24 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -41,10 +42,7 @@ import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextField
-import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberDrawerState
@@ -59,7 +57,10 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -81,8 +82,12 @@ fun TaskListScreen(
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
-    var quickAddText by rememberSaveable { mutableStateOf("") }
     var currentLabelFilter by rememberSaveable { mutableStateOf<String?>(null) }
+    
+    var expandedTaskId by rememberSaveable { mutableStateOf<String?>(null) }
+    var isAddingInline by remember { mutableStateOf(false) }
+    
+    val lazyListState = rememberLazyListState()
 
     // Show sync error in snackbar
     LaunchedEffect(uiState.syncError) {
@@ -102,11 +107,13 @@ fun TaskListScreen(
                     onFilterSelected = { filter ->
                         viewModel.setFilter(filter)
                         currentLabelFilter = null
+                        expandedTaskId = null
                         scope.launch { drawerState.close() }
                     },
                     onLabelSelected = { label ->
                         viewModel.setLabelFilter(label)
                         currentLabelFilter = label
+                        expandedTaskId = null
                         scope.launch { drawerState.close() }
                     },
                     onSettingsClick = {
@@ -157,7 +164,16 @@ fun TaskListScreen(
             snackbarHost = { SnackbarHost(snackbarHostState) },
             floatingActionButton = {
                 LargeFloatingActionButton(
-                    onClick = { /* Focus quick add */ },
+                    onClick = {
+                        isAddingInline = true
+                        scope.launch {
+                            // Scroll to bottom to show inline creator
+                            val lastIndex = uiState.tasks.size + 1
+                            if (lastIndex >= 0) {
+                                lazyListState.animateScrollToItem(lastIndex)
+                            }
+                        }
+                    },
                     shape = RoundedCornerShape(28.dp),
                     containerColor = AccentBlue,
                     contentColor = Color.White
@@ -177,8 +193,8 @@ fun TaskListScreen(
                     .padding(innerPadding)
                     .imePadding()
             ) {
-                if (uiState.tasks.isEmpty()) {
-                    // Empty state
+                if (uiState.tasks.isEmpty() && !isAddingInline) {
+                    // Empty state (only if not currently typing inline)
                     Box(
                         modifier = Modifier
                             .weight(1f)
@@ -209,6 +225,7 @@ fun TaskListScreen(
                     }
                 } else {
                     LazyColumn(
+                        state = lazyListState,
                         modifier = Modifier.weight(1f),
                         verticalArrangement = Arrangement.spacedBy(2.dp)
                     ) {
@@ -222,9 +239,32 @@ fun TaskListScreen(
                         ) { task ->
                             TaskRow(
                                 task = task,
+                                isExpanded = task.id == expandedTaskId,
+                                labels = uiState.labels,
                                 onToggleComplete = { viewModel.toggleTaskCompletion(task) },
                                 onDelete = { viewModel.deleteTask(task) },
+                                onClick = {
+                                    expandedTaskId = if (expandedTaskId == task.id) null else task.id
+                                },
+                                onUpdateTask = { updated ->
+                                    viewModel.updateTask(updated)
+                                },
                                 modifier = Modifier.animateItem()
+                            )
+                        }
+
+                        // Inline Task Creator at bottom of the list
+                        item {
+                            InlineTaskCreator(
+                                isAddingInline = isAddingInline,
+                                onAdd = { title ->
+                                    viewModel.addTask(
+                                        title = title,
+                                        label = if (uiState.currentFilter == TaskFilter.LABEL) currentLabelFilter else null
+                                    )
+                                },
+                                onCancel = { isAddingInline = false },
+                                onStartAdding = { isAddingInline = true }
                             )
                         }
 
@@ -233,65 +273,93 @@ fun TaskListScreen(
                         }
                     }
                 }
+            }
+        }
+    }
+}
 
-                // Quick Add Row
-                Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    color = MaterialTheme.colorScheme.surface,
-                    tonalElevation = 2.dp,
-                    shadowElevation = 8.dp
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 8.dp, vertical = 8.dp)
-                            .windowInsetsPadding(WindowInsets.navigationBars),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.Add,
-                            contentDescription = null,
-                            tint = AccentBlue,
-                            modifier = Modifier
-                                .padding(start = 8.dp)
-                                .size(24.dp)
-                        )
-                        TextField(
-                            value = quickAddText,
-                            onValueChange = { quickAddText = it },
-                            placeholder = {
-                                Text(
-                                    "Add a task...",
-                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
-                                )
-                            },
-                            modifier = Modifier
-                                .weight(1f)
-                                .padding(start = 4.dp),
-                            colors = TextFieldDefaults.colors(
-                                focusedContainerColor = Color.Transparent,
-                                unfocusedContainerColor = Color.Transparent,
-                                disabledContainerColor = Color.Transparent,
-                                focusedIndicatorColor = Color.Transparent,
-                                unfocusedIndicatorColor = Color.Transparent
-                            ),
-                            keyboardOptions = KeyboardOptions(
-                                imeAction = ImeAction.Done
-                            ),
-                            keyboardActions = KeyboardActions(
-                                onDone = {
-                                    if (quickAddText.isNotBlank()) {
-                                        viewModel.addTask(title = quickAddText.trim())
-                                        quickAddText = ""
-                                    }
-                                }
-                            ),
-                            singleLine = true,
-                            textStyle = MaterialTheme.typography.bodyLarge
+@Composable
+fun InlineTaskCreator(
+    isAddingInline: Boolean,
+    onAdd: (String) -> Unit,
+    onCancel: () -> Unit,
+    onStartAdding: () -> Unit
+) {
+    if (isAddingInline) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 32.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = Icons.Filled.Add,
+                contentDescription = null,
+                tint = AccentBlue,
+                modifier = Modifier.size(24.dp)
+            )
+            Spacer(modifier = Modifier.width(12.dp))
+
+            var text by remember { mutableStateOf("") }
+            val focusRequester = remember { FocusRequester() }
+
+            LaunchedEffect(Unit) {
+                focusRequester.requestFocus()
+            }
+
+            BasicTextField(
+                value = text,
+                onValueChange = { text = it },
+                modifier = Modifier
+                    .weight(1f)
+                    .focusRequester(focusRequester),
+                textStyle = MaterialTheme.typography.bodyLarge.copy(
+                    color = MaterialTheme.colorScheme.onSurface
+                ),
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(
+                    onDone = {
+                        if (text.isNotBlank()) {
+                            onAdd(text.trim())
+                            text = ""
+                        }
+                        onCancel()
+                    }
+                ),
+                decorationBox = { innerTextField ->
+                    if (text.isEmpty()) {
+                        Text(
+                            text = "Add tasks",
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f),
+                            style = MaterialTheme.typography.bodyLarge
                         )
                     }
+                    innerTextField()
                 }
-            }
+            )
+        }
+    } else {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 4.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .clickable { onStartAdding() }
+                .padding(horizontal = 12.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = Icons.Filled.Add,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f),
+                modifier = Modifier.size(24.dp)
+            )
+            Spacer(modifier = Modifier.width(12.dp))
+            Text(
+                text = "Add tasks",
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f),
+                style = MaterialTheme.typography.bodyLarge
+            )
         }
     }
 }
