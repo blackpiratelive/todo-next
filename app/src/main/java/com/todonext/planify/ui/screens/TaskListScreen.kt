@@ -62,6 +62,7 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
@@ -237,10 +238,12 @@ fun TaskListScreen(
                             items = uiState.tasks,
                             key = { it.id }
                         ) { task ->
+                            val subtasks by remember(task.id) { viewModel.getSubtasks(task.id) }.collectAsState(initial = emptyList())
                             TaskRow(
                                 task = task,
                                 isExpanded = task.id == expandedTaskId,
                                 labels = uiState.labels,
+                                subtasks = subtasks,
                                 onToggleComplete = { viewModel.toggleTaskCompletion(task) },
                                 onDelete = { viewModel.deleteTask(task) },
                                 onClick = {
@@ -248,6 +251,15 @@ fun TaskListScreen(
                                 },
                                 onUpdateTask = { updated ->
                                     viewModel.updateTask(updated)
+                                },
+                                onAddSubtask = { subtaskTitle ->
+                                    viewModel.addSubtask(subtaskTitle, task.id)
+                                },
+                                onToggleSubtask = { subtask ->
+                                    viewModel.toggleTaskCompletion(subtask)
+                                },
+                                onDeleteSubtask = { subtask ->
+                                    viewModel.deleteTask(subtask)
                                 },
                                 modifier = Modifier.animateItem()
                             )
@@ -316,6 +328,7 @@ fun InlineTaskCreator(
                 textStyle = MaterialTheme.typography.bodyLarge.copy(
                     color = MaterialTheme.colorScheme.onSurface
                 ),
+                cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                 keyboardActions = KeyboardActions(
                     onDone = {

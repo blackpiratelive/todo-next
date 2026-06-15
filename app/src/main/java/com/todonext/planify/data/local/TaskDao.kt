@@ -15,6 +15,8 @@ interface TaskDao {
         """
         SELECT * FROM tasks 
         WHERE isCompleted = 0 
+          AND isDeleted = 0
+          AND parentTaskId IS NULL
         ORDER BY 
             CASE WHEN dueDate IS NULL THEN 1 ELSE 0 END, 
             dueDate ASC
@@ -22,13 +24,18 @@ interface TaskDao {
     )
     fun getActiveTasks(): Flow<List<TaskEntity>>
 
-    @Query("SELECT * FROM tasks")
+    @Query("SELECT * FROM tasks WHERE isDeleted = 0")
     fun getAllTasks(): Flow<List<TaskEntity>>
+
+    @Query("SELECT * FROM tasks")
+    suspend fun getAllTasksSync(): List<TaskEntity>
 
     @Query(
         """
         SELECT * FROM tasks 
         WHERE isCompleted = 0 
+          AND isDeleted = 0
+          AND parentTaskId IS NULL
           AND dueDate IS NOT NULL 
           AND dueDate <= :endOfDay 
         ORDER BY dueDate ASC
@@ -40,17 +47,28 @@ interface TaskDao {
         """
         SELECT * FROM tasks 
         WHERE isCompleted = 0 
+          AND isDeleted = 0
+          AND parentTaskId IS NULL
           AND dueDate IS NOT NULL 
         ORDER BY dueDate ASC
         """
     )
     fun getScheduledTasks(): Flow<List<TaskEntity>>
 
-    @Query("SELECT * FROM tasks WHERE label = :label")
+    @Query("SELECT * FROM tasks WHERE label = :label AND parentTaskId IS NULL AND isDeleted = 0")
     fun getTasksByLabel(label: String): Flow<List<TaskEntity>>
 
-    @Query("SELECT * FROM tasks WHERE isSynced = 0")
+    @Query("SELECT * FROM tasks WHERE parentTaskId = :parentId AND isDeleted = 0")
+    fun getSubtasksForTask(parentId: String): Flow<List<TaskEntity>>
+
+    @Query("SELECT * FROM tasks WHERE parentTaskId = :parentId AND isDeleted = 0")
+    suspend fun getSubtasksForTaskSync(parentId: String): List<TaskEntity>
+
+    @Query("SELECT * FROM tasks WHERE isSynced = 0 AND isDeleted = 0")
     suspend fun getUnsyncedTasks(): List<TaskEntity>
+
+    @Query("SELECT * FROM tasks WHERE isDeleted = 1")
+    suspend fun getDeletedTasks(): List<TaskEntity>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertTask(task: TaskEntity)

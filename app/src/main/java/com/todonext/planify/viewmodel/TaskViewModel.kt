@@ -8,7 +8,9 @@ import com.todonext.planify.data.local.TaskDao
 import com.todonext.planify.data.local.TaskEntity
 import com.todonext.planify.data.preferences.PreferencesManager
 import com.todonext.planify.data.repository.SyncRepository
+import com.todonext.planify.data.reminder.ReminderManager
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -38,12 +40,19 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
     private val taskDao: TaskDao = database.taskDao()
     private val preferencesManager: PreferencesManager = PreferencesManager(application)
     private val syncRepository: SyncRepository = SyncRepository(taskDao, preferencesManager)
+    private val reminderManager = ReminderManager(application)
 
     private val _currentFilter = MutableStateFlow(TaskFilter.INBOX)
     val currentLabelFilter = MutableStateFlow<String?>(null)
 
+    init {
+        triggerSync()
+    }
+
     private val _isSyncing = MutableStateFlow(false)
     private val _syncError = MutableStateFlow<String?>(null)
+
+    val syncLogs: StateFlow<List<String>> = syncRepository.syncLogs
 
     private fun endOfTodayMillis(): Long {
         return Calendar.getInstance().apply {
@@ -105,6 +114,24 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
                 isSynced = false
             )
             taskDao.insertTask(task)
+            triggerSync()
+        }
+    }
+
+    fun getSubtasks(parentId: String): Flow<List<TaskEntity>> {
+        return taskDao.getSubtasksForTask(parentId)
+    }
+
+    fun addSubtask(title: String, parentId: String) {
+        viewModelScope.launch {
+            val task = TaskEntity(
+                title = title,
+                parentTaskId = parentId,
+                lastModifiedLocally = System.currentTimeMillis(),
+                isSynced = false
+            )
+            taskDao.insertTask(task)
+            triggerSync()
         }
     }
 
@@ -116,6 +143,12 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
                 isSynced = false
             )
             taskDao.updateTask(updatedTask)
+            if (updatedTask.isCompleted) {
+                reminderManager.cancelReminder(updatedTask.id)
+            } else if (updatedTask.reminderTime != null) {
+                reminderManager.scheduleReminder(updatedTask)
+            }
+            triggerSync()
         }
     }
 
@@ -126,12 +159,25 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
                 isSynced = false
             )
             taskDao.updateTask(updatedTask)
+            if (updatedTask.isCompleted || updatedTask.reminderTime == null) {
+                reminderManager.cancelReminder(updatedTask.id)
+            } else {
+                reminderManager.scheduleReminder(updatedTask)
+            }
+            triggerSync()
         }
     }
 
     fun deleteTask(task: TaskEntity) {
         viewModelScope.launch {
-            taskDao.deleteTask(task)
+            if (task.caldavHref == null) {
+                taskDao.deleteTask(task)
+            } else {
+                // soft delete to sync with remote server
+                taskDao.updateTask(task.copy(isDeleted = true, isSynced = false))
+            }
+            reminderManager.cancelReminder(task.id)
+            triggerSync()
         }
     }
 

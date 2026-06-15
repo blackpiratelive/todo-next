@@ -16,6 +16,9 @@ data class TaskEntity(
     val label: String? = null,
     val description: String? = null,
     val isPinned: Boolean = false,
+    val parentTaskId: String? = null,
+    val reminderTime: Long? = null,
+    val isDeleted: Boolean = false,
     val lastModifiedLocally: Long = System.currentTimeMillis(),
     val isSynced: Boolean = false
 )

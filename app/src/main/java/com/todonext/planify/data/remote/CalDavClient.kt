@@ -30,7 +30,8 @@ data class CalDavTodo(
     val due: Long?,
     val priority: Int,
     val description: String? = null,
-    val categories: String? = null
+    val categories: String? = null,
+    val parentUid: String? = null
 )
 
 data class PutResult(val href: String, val eTag: String?)
@@ -40,6 +41,12 @@ class CalDavClient(
     private val username: String,
     private val password: String
 ) {
+
+    private val baseUrl: String = if (serverUrl.contains("/remote.php/dav")) {
+        serverUrl.substringBefore("/remote.php/dav").trimEnd('/')
+    } else {
+        serverUrl.trimEnd('/')
+    }
 
     private val xmlMediaType = "application/xml; charset=utf-8".toMediaType()
     private val icalMediaType = "text/calendar; charset=utf-8".toMediaType()
@@ -68,7 +75,7 @@ class CalDavClient(
     suspend fun discoverCalendarUrl(): String? = withContext(Dispatchers.IO) {
         try {
             // Step 1: Get user principal
-            val principalUrl = "${serverUrl}/remote.php/dav/principals/users/$username/"
+            val principalUrl = "$baseUrl/remote.php/dav/principals/users/$username/"
             val principalBody = """
                 <?xml version="1.0" encoding="UTF-8"?>
                 <d:propfind xmlns:d="DAV:">
@@ -80,7 +87,7 @@ class CalDavClient(
 
             val principalResponse = executePropfind(principalUrl, principalBody, depth = "0")
             val principalHref = extractTextContent(principalResponse, "current-user-principal", "href")
-                ?: return@withContext fallbackCalendarUrl()
+                ?: throw Exception("Could not find current-user-principal in server response")
 
             // Step 2: Get calendar-home-set
             val resolvedPrincipalUrl = resolveUrl(principalHref)
@@ -95,7 +102,7 @@ class CalDavClient(
 
             val calHomeResponse = executePropfind(resolvedPrincipalUrl, calHomeBody, depth = "0")
             val calHomeHref = extractTextContent(calHomeResponse, "calendar-home-set", "href")
-                ?: return@withContext fallbackCalendarUrl()
+                ?: throw Exception("Could not find calendar-home-set in server response")
 
             // Step 3: Find VTODO-supporting calendar
             val resolvedCalHomeUrl = resolveUrl(calHomeHref)
@@ -111,15 +118,15 @@ class CalDavClient(
             """.trimIndent()
 
             val calListResponse = executePropfind(resolvedCalHomeUrl, calListBody, depth = "1")
-            findVTodoCalendar(calListResponse) ?: fallbackCalendarUrl()
+            findVTodoCalendar(calListResponse) ?: throw Exception("No VTODO-supporting calendar found on server")
         } catch (e: Exception) {
             e.printStackTrace()
-            fallbackCalendarUrl()
+            throw e
         }
     }
 
     /**
-     * Fetches all VTODO items from the given calendar URL using a REPORT request.
+     * Shows all VTODO items from the given calendar URL using a REPORT request.
      */
     suspend fun fetchTodos(calendarUrl: String): List<CalDavTodo> = withContext(Dispatchers.IO) {
         val resolvedUrl = resolveUrl(calendarUrl)
@@ -145,14 +152,13 @@ class CalDavClient(
             .header("Content-Type", "application/xml; charset=utf-8")
             .build()
 
-        val response = client.newCall(request).execute()
-        val body = response.body?.string() ?: return@withContext emptyList()
-
-        if (!response.isSuccessful && response.code != 207) {
-            return@withContext emptyList()
+        client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful && response.code != 207) {
+                throw Exception("Failed to fetch remote tasks: HTTP ${response.code} ${response.message}")
+            }
+            val body = response.body?.string() ?: throw Exception("Empty response body from server")
+            parseMultiStatusForTodos(body)
         }
-
-        parseMultiStatusForTodos(body)
     }
 
     /**
@@ -172,14 +178,13 @@ class CalDavClient(
             .put(vtodoIcal.toRequestBody(icalMediaType))
             .header("Content-Type", "text/calendar; charset=utf-8")
 
-        // If updating an existing resource, we could add If-Match header
-        // For simplicity, we allow overwrites
-
-        val response = client.newCall(requestBuilder.build()).execute()
-        val eTag = response.header("ETag")
-        response.close()
-
-        PutResult(href = targetHref, eTag = eTag)
+        client.newCall(requestBuilder.build()).execute().use { response ->
+            if (!response.isSuccessful) {
+                throw Exception("Failed to upload task: HTTP ${response.code} ${response.message}")
+            }
+            val eTag = response.header("ETag")?.removeSurrounding("\"")
+            PutResult(href = targetHref, eTag = eTag)
+        }
     }
 
     /**
@@ -195,13 +200,16 @@ class CalDavClient(
         val request = Request.Builder()
             .url(resolvedUrl)
             .delete()
-            .header("If-Match", eTag)
+            .apply {
+                if (eTag.isNotBlank()) {
+                    header("If-Match", "\"$eTag\"")
+                }
+            }
             .build()
 
-        val response = client.newCall(request).execute()
-        val success = response.isSuccessful || response.code == 204
-        response.close()
-        success
+        client.newCall(request).execute().use { response ->
+            response.isSuccessful || response.code == 204 || response.code == 404
+        }
     }
 
     /**
@@ -215,6 +223,8 @@ class CalDavClient(
         var priority = 0
         var description: String? = null
         var categories: String? = null
+
+        var parentUid: String? = null
 
         // Handle unfolded lines (RFC 5545: lines starting with space/tab are continuations)
         val unfoldedData = icalData
@@ -250,6 +260,9 @@ class CalDavClient(
                 trimmed.startsWith("CATEGORIES:") -> {
                     categories = trimmed.substringAfter("CATEGORIES:")
                 }
+                trimmed.startsWith("RELATED-TO") -> {
+                    parentUid = trimmed.substringAfter(":").trim()
+                }
                 trimmed.startsWith("STATUS:COMPLETED") -> {
                     completed = true
                 }
@@ -276,7 +289,8 @@ class CalDavClient(
             due = due,
             priority = priority,
             description = description,
-            categories = categories
+            categories = categories,
+            parentUid = parentUid
         )
     }
 
@@ -300,6 +314,10 @@ class CalDavClient(
 
         task.description?.let { desc ->
             sb.appendLine("DESCRIPTION:${escapeICalText(desc)}")
+        }
+
+        task.parentTaskId?.let { parentId ->
+            sb.appendLine("RELATED-TO;RELTYPE=PARENT:$parentId")
         }
 
         if (task.isCompleted) {
@@ -340,20 +358,24 @@ class CalDavClient(
             .header("Content-Type", "application/xml; charset=utf-8")
             .build()
 
-        val response = client.newCall(request).execute()
-        return response.body?.string() ?: ""
+        client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) {
+                throw Exception("PROPFIND failed with HTTP ${response.code} ${response.message}")
+            }
+            return response.body?.string() ?: ""
+        }
     }
 
     private fun resolveUrl(path: String): String {
         return if (path.startsWith("http://") || path.startsWith("https://")) {
             path
         } else {
-            "${serverUrl.trimEnd('/')}${if (path.startsWith("/")) "" else "/"}$path"
+            "$baseUrl${if (path.startsWith("/")) "" else "/"}$path"
         }
     }
 
     private fun fallbackCalendarUrl(): String {
-        return "${serverUrl.trimEnd('/')}/remote.php/dav/calendars/$username/tasks/"
+        return "$baseUrl/remote.php/dav/calendars/$username/tasks/"
     }
 
     private fun parseXml(xml: String): Document? {

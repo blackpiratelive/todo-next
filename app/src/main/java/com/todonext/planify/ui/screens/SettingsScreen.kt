@@ -37,10 +37,13 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -48,6 +51,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
@@ -67,12 +71,28 @@ fun SettingsScreen(
     viewModel: TaskViewModel,
     onNavigateBack: () -> Unit
 ) {
+    val uiState by viewModel.uiState.collectAsState()
+    val syncLogs by viewModel.syncLogs.collectAsState()
+    
     var serverUrl by rememberSaveable { mutableStateOf(viewModel.getServerUrl()) }
     var username by rememberSaveable { mutableStateOf(viewModel.getUsername()) }
     var password by rememberSaveable { mutableStateOf(viewModel.getPassword()) }
     var passwordVisible by rememberSaveable { mutableStateOf(false) }
     var connectionStatus by remember { mutableStateOf(ConnectionStatus.IDLE) }
     var isSaved by remember { mutableStateOf(false) }
+
+    // Reactively update connection status based on sync outcomes
+    LaunchedEffect(uiState.isSyncing) {
+        if (uiState.isSyncing) {
+            connectionStatus = ConnectionStatus.TESTING
+        } else if (connectionStatus == ConnectionStatus.TESTING) {
+            connectionStatus = if (uiState.syncError != null) {
+                ConnectionStatus.ERROR
+            } else {
+                ConnectionStatus.SUCCESS
+            }
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -250,7 +270,7 @@ fun SettingsScreen(
                             when (connectionStatus) {
                                 ConnectionStatus.TESTING -> {
                                     Text(
-                                        text = "Testing connection...",
+                                        text = "Syncing and testing connection...",
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                                     )
@@ -263,7 +283,7 @@ fun SettingsScreen(
                                         modifier = Modifier.size(18.dp)
                                     )
                                     Text(
-                                        text = "Connected successfully",
+                                        text = "Sync completed successfully",
                                         style = MaterialTheme.typography.bodySmall,
                                         color = CompletedGreen
                                     )
@@ -276,7 +296,7 @@ fun SettingsScreen(
                                         modifier = Modifier.size(18.dp)
                                     )
                                     Text(
-                                        text = "Connection failed",
+                                        text = "Sync failed: ${uiState.syncError ?: "unknown error"}",
                                         style = MaterialTheme.typography.bodySmall,
                                         color = OverdueRed
                                     )
@@ -288,7 +308,7 @@ fun SettingsScreen(
 
                     // Saved indicator
                     AnimatedVisibility(
-                        visible = isSaved,
+                        visible = isSaved && connectionStatus == ConnectionStatus.IDLE,
                         enter = fadeIn(),
                         exit = fadeOut()
                     ) {
@@ -344,14 +364,12 @@ fun SettingsScreen(
 
                         OutlinedButton(
                             onClick = {
-                                connectionStatus = ConnectionStatus.TESTING
                                 viewModel.saveServerConfig(
                                     url = serverUrl,
                                     username = username,
                                     password = password
                                 )
                                 viewModel.triggerSync()
-                                connectionStatus = ConnectionStatus.SUCCESS
                             },
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -359,12 +377,69 @@ fun SettingsScreen(
                             shape = RoundedCornerShape(12.dp),
                             enabled = serverUrl.isNotBlank() &&
                                     username.isNotBlank() &&
-                                    password.isNotBlank()
+                                    password.isNotBlank() &&
+                                    !uiState.isSyncing
                         ) {
                             Text(
-                                text = "Test Connection",
+                                text = "Test & Sync Now",
                                 style = MaterialTheme.typography.titleSmall
                             )
+                        }
+                    }
+
+                    // Live Sync Logs Console
+                    AnimatedVisibility(
+                        visible = connectionStatus != ConnectionStatus.IDLE || syncLogs.isNotEmpty()
+                    ) {
+                        Column(
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.fillMaxWidth().padding(top = 16.dp)
+                        ) {
+                            Text(
+                                text = "Sync Log Traces",
+                                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            
+                            Surface(
+                                modifier = Modifier.fillMaxWidth().height(180.dp),
+                                shape = RoundedCornerShape(8.dp),
+                                color = Color(0xFF131314),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
+                            ) {
+                                val logScrollState = rememberScrollState()
+                                LaunchedEffect(syncLogs.size) {
+                                    logScrollState.animateScrollTo(logScrollState.maxValue)
+                                }
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .verticalScroll(logScrollState)
+                                        .padding(12.dp)
+                                ) {
+                                    if (syncLogs.isEmpty()) {
+                                        Text(
+                                            text = "Sync traces will appear here...",
+                                            style = MaterialTheme.typography.bodySmall.copy(fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace),
+                                            color = Color.Gray
+                                        )
+                                    } else {
+                                        syncLogs.forEach { logLine ->
+                                            Text(
+                                                text = logLine,
+                                                style = MaterialTheme.typography.bodySmall.copy(fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace),
+                                                color = if (logLine.contains("Error", ignoreCase = true)) {
+                                                    OverdueRed
+                                                } else if (logLine.contains("Success", ignoreCase = true) || logLine.contains("completed", ignoreCase = true)) {
+                                                    CompletedGreen
+                                                } else {
+                                                    Color.LightGray
+                                                }
+                                            )
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }

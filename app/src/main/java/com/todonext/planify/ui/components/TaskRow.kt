@@ -17,6 +17,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.PushPin
@@ -41,6 +43,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TextField
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -50,7 +53,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -80,16 +85,25 @@ fun TaskRow(
     task: TaskEntity,
     isExpanded: Boolean,
     labels: List<String>,
+    subtasks: List<TaskEntity>,
     onToggleComplete: () -> Unit,
     onDelete: () -> Unit,
     onClick: () -> Unit,
     onUpdateTask: (TaskEntity) -> Unit,
+    onAddSubtask: (String) -> Unit,
+    onToggleSubtask: (TaskEntity) -> Unit,
+    onDeleteSubtask: (TaskEntity) -> Unit,
     modifier: Modifier = Modifier
 ) {
     var isVisible by remember { mutableStateOf(true) }
     var showDatePicker by remember { mutableStateOf(false) }
+    var showReminderDatePicker by remember { mutableStateOf(false) }
+    var showReminderTimePicker by remember { mutableStateOf(false) }
+    var selectedReminderDateMillis by remember { mutableStateOf<Long?>(null) }
+    
     var showPriorityMenu by remember { mutableStateOf(false) }
     var showLabelMenu by remember { mutableStateOf(false) }
+    var showNewLabelDialog by remember { mutableStateOf(false) }
 
     AnimatedVisibility(
         visible = isVisible,
@@ -224,6 +238,7 @@ fun TaskRow(
                             modifier = Modifier
                                 .weight(1f)
                                 .padding(vertical = 8.dp),
+                            cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                             decorationBox = { innerTextField ->
                                 if (titleText.isEmpty()) {
                                     Text(
@@ -266,6 +281,7 @@ fun TaskRow(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(horizontal = 8.dp, vertical = 4.dp),
+                        cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                         decorationBox = { innerTextField ->
                             if (descText.isEmpty()) {
                                 Text(
@@ -278,49 +294,33 @@ fun TaskRow(
                         }
                     )
 
-                    // Row 3: Date Title
+                    // Row 3: Date & Reminder Section
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(horizontal = 8.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
+                        // Date picker row
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { showDatePicker = true }
                         ) {
                             Icon(
                                 imageVector = Icons.Outlined.CalendarMonth,
                                 contentDescription = null,
-                                modifier = Modifier.size(18.dp),
+                                modifier = Modifier.size(20.dp),
                                 tint = MaterialTheme.colorScheme.onSurface
                             )
-                            Text(
-                                text = "Date",
-                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold)
-                            )
-                        }
+                            val (dateText, isOverdue) = if (task.dueDate != null) {
+                                formatRelativeDate(task.dueDate)
+                            } else {
+                                "Set a due date" to false
+                            }
 
-                        // Row 4: Due date text & Relative date
-                        val (dateText, isOverdue) = if (task.dueDate != null) {
-                            formatRelativeDate(task.dueDate)
-                        } else {
-                            "No due date" to false
-                        }
-
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            modifier = Modifier
-                                .clickable { showDatePicker = true }
-                                .padding(vertical = 4.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Outlined.Schedule,
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp),
-                                tint = if (isOverdue) OverdueRed else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                            )
                             Text(
                                 text = if (task.dueDate != null) {
                                     val sdf = java.text.SimpleDateFormat("EEE, d MMM", java.util.Locale.getDefault())
@@ -329,8 +329,87 @@ fun TaskRow(
                                     "Set a due date"
                                 },
                                 style = MaterialTheme.typography.bodyMedium,
-                                color = if (isOverdue) OverdueRed else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                                color = if (isOverdue) OverdueRed else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
                             )
+                        }
+
+                        // Reminder Alarm row
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { showReminderDatePicker = true }
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.Alarm,
+                                contentDescription = null,
+                                modifier = Modifier.size(20.dp),
+                                tint = if (task.reminderTime != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                            )
+                            Text(
+                                text = if (task.reminderTime != null) {
+                                    val sdf = java.text.SimpleDateFormat("EEE, d MMM, HH:mm", java.util.Locale.getDefault())
+                                    "Reminder: ${sdf.format(java.util.Date(task.reminderTime))}"
+                                } else {
+                                    "Set a reminder alarm"
+                                },
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = if (task.reminderTime != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                            )
+                        }
+                    }
+
+                    // Row 4: Subtasks List
+                    if (subtasks.isNotEmpty()) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            subtasks.forEach { subtask ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    AnimatedCheckbox(
+                                        checked = subtask.isCompleted,
+                                        onCheckedChange = { onToggleSubtask(subtask) },
+                                        accentColor = if (subtask.isCompleted) CompletedGreen else MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(12.dp))
+                                    
+                                    var subtaskTitle by remember { mutableStateOf(subtask.title) }
+                                    BasicTextField(
+                                        value = subtaskTitle,
+                                        onValueChange = {
+                                            subtaskTitle = it
+                                            onUpdateTask(subtask.copy(title = it))
+                                        },
+                                        textStyle = MaterialTheme.typography.bodyMedium.copy(
+                                            color = if (subtask.isCompleted) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f) else MaterialTheme.colorScheme.onSurface,
+                                            textDecoration = if (subtask.isCompleted) TextDecoration.LineThrough else TextDecoration.None
+                                        ),
+                                        singleLine = true,
+                                        modifier = Modifier.weight(1f),
+                                        cursorBrush = SolidColor(MaterialTheme.colorScheme.primary)
+                                    )
+                                    
+                                    IconButton(
+                                        onClick = { onDeleteSubtask(subtask) },
+                                        modifier = Modifier.size(24.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Outlined.Delete,
+                                            contentDescription = "Delete subtask",
+                                            tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f),
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
 
@@ -377,6 +456,13 @@ fun TaskRow(
                                             }
                                         )
                                     }
+                                    DropdownMenuItem(
+                                        text = { Text("+ Create Label...") },
+                                        onClick = {
+                                            showLabelMenu = false
+                                            showNewLabelDialog = true
+                                        }
+                                    )
                                 }
                             }
                             IconButton(onClick = { showPriorityMenu = true }) {
@@ -425,13 +511,6 @@ fun TaskRow(
                                     )
                                 }
                             }
-                            IconButton(onClick = { /* Reminder Alarm action */ }) {
-                                Icon(
-                                    imageVector = Icons.Outlined.Alarm,
-                                    contentDescription = "Reminder",
-                                    tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                                )
-                            }
                         }
 
                         IconButton(onClick = {
@@ -446,26 +525,73 @@ fun TaskRow(
                         }
                     }
 
-                    // Native Inline Add Subtasks row
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { /* Subtask action */ }
-                            .padding(vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.Add,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
-                            modifier = Modifier.size(20.dp)
-                        )
-                        Text(
-                            text = "Add Subtasks",
-                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
-                        )
+                    // Inline Add Subtask input trigger
+                    var isAddingSubtask by remember { mutableStateOf(false) }
+                    if (isAddingSubtask) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Add,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            
+                            var newSubtaskText by remember { mutableStateOf("") }
+                            BasicTextField(
+                                value = newSubtaskText,
+                                onValueChange = { newSubtaskText = it },
+                                textStyle = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onSurface),
+                                modifier = Modifier.weight(1f),
+                                cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                                keyboardActions = KeyboardActions(
+                                    onDone = {
+                                        if (newSubtaskText.isNotBlank()) {
+                                            onAddSubtask(newSubtaskText.trim())
+                                            newSubtaskText = ""
+                                        }
+                                        isAddingSubtask = false
+                                    }
+                                ),
+                                decorationBox = { innerTextField ->
+                                    if (newSubtaskText.isEmpty()) {
+                                        Text(
+                                            text = "Add subtask...",
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
+                                        )
+                                    }
+                                    innerTextField()
+                                }
+                            )
+                        }
+                    } else {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { isAddingSubtask = true }
+                                .padding(horizontal = 8.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Add,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Text(
+                                text = "Add Subtasks",
+                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
+                            )
+                        }
                     }
                 }
             }
@@ -498,5 +624,105 @@ fun TaskRow(
         ) {
             DatePicker(state = datePickerState)
         }
+    }
+
+    // Two-step Alarm reminder picker (Date -> Time)
+    if (showReminderDatePicker) {
+        val datePickerState = rememberDatePickerState(
+            initialSelectedDateMillis = task.reminderTime ?: System.currentTimeMillis()
+        )
+        DatePickerDialog(
+            onDismissRequest = { showReminderDatePicker = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    selectedReminderDateMillis = datePickerState.selectedDateMillis
+                    showReminderDatePicker = false
+                    showReminderTimePicker = true
+                }) {
+                    Text("Next")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    onUpdateTask(task.copy(reminderTime = null))
+                    showReminderDatePicker = false
+                }) {
+                    Text("Clear")
+                }
+            }
+        ) {
+            DatePicker(state = datePickerState)
+        }
+    }
+
+    if (showReminderTimePicker && selectedReminderDateMillis != null) {
+        val calendar = java.util.Calendar.getInstance().apply {
+            task.reminderTime?.let { timeInMillis = it }
+        }
+        val timePickerState = androidx.compose.material3.rememberTimePickerState(
+            initialHour = calendar.get(java.util.Calendar.HOUR_OF_DAY),
+            initialMinute = calendar.get(java.util.Calendar.MINUTE)
+        )
+
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { showReminderTimePicker = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    val finalCalendar = java.util.Calendar.getInstance().apply {
+                        timeInMillis = selectedReminderDateMillis!!
+                        set(java.util.Calendar.HOUR_OF_DAY, timePickerState.hour)
+                        set(java.util.Calendar.MINUTE, timePickerState.minute)
+                        set(java.util.Calendar.SECOND, 0)
+                        set(java.util.Calendar.MILLISECOND, 0)
+                    }
+                    onUpdateTask(task.copy(reminderTime = finalCalendar.timeInMillis))
+                    showReminderTimePicker = false
+                }) {
+                    Text("OK")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showReminderTimePicker = false }) {
+                    Text("Cancel")
+                }
+            },
+            text = {
+                androidx.compose.material3.TimePicker(state = timePickerState)
+            }
+        )
+    }
+
+    // New Label Creation Dialog
+    if (showNewLabelDialog) {
+        var newLabelText by remember { mutableStateOf("") }
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { showNewLabelDialog = false },
+            title = { Text("Create New Label") },
+            text = {
+                TextField(
+                    value = newLabelText,
+                    onValueChange = { newLabelText = it },
+                    placeholder = { Text("Label name") },
+                    singleLine = true
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        if (newLabelText.isNotBlank()) {
+                            onUpdateTask(task.copy(label = newLabelText.trim()))
+                        }
+                        showNewLabelDialog = false
+                    }
+                ) {
+                    Text("Create")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showNewLabelDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
     }
 }
