@@ -1,0 +1,57 @@
+Act as an expert Android developer specializing in Kotlin, Jetpack Compose, offline-first mobile applications, and CalDAV synchronization.
+
+Your task is to generate the complete, production-ready source code for a premium, Nextcloud-first Android To-Do List app. It must be heavily inspired by the "Planify" Linux application's modern aesthetic. There are no phases; you must output all necessary files and code blocks to build this app at once.
+
+### Core Architecture & Tech Stack
+* **Language:** Kotlin
+* **UI Framework:** Jetpack Compose (Material 3)
+* **Architecture:** MVVM (Model-View-ViewModel)
+* **Local Storage:** Room Database (Offline-first architecture)
+* **Network & Sync:** OkHttp/Retrofit. The app must implement a background CalDAV client to synchronize `VTODO` items with a Nextcloud Tasks server.
+* **Asynchrony:** Coroutines and Kotlin Flow
+
+### Design Language: Modern "Planify" Aesthetic
+The UI must feel like a first-class modern application: fluid, beautifully spaced, and highly polished. It must fully support both Light and Dark modes using Material 3 dynamic theming principles.
+* **Colors (Dark Mode):** Deep, elegant charcoal (`#1E1E1E` for surfaces, `#25252D` for drawer/backgrounds). White/off-white typography.
+* **Colors (Light Mode):** Clean white surfaces (`#FFFFFF`), very light gray backgrounds (`#F5F5F5`). Dark, highly legible typography.
+* **Accent Color:** A vibrant, recognizable blue (e.g., `#3584E4`) used for active states, the Floating Action Button (FAB), and primary icons.
+* **Shapes & Elevation:** Use heavily rounded corners (e.g., `12dp` to `16dp`) for active drawer items, dialogs, and task rows. Use subtle elevation/shadows in Light Mode to separate overlapping surfaces (like the Top Bar or FAB); keep Dark Mode flat with color boundaries.
+
+### Animation & Interaction Specifications
+The app must not feel static. Implement the following Compose animations:
+1. **List Animations:** Use `animateItemPlacement()` on the `LazyColumn` so tasks smoothly slide into place when sorting changes.
+2. **Task Enter/Exit:** Wrap task rows in `AnimatedVisibility` (using `fadeIn` + `expandVertically` for appearing, and `fadeOut` + `shrinkVertically` for completion/deletion).
+3. **State Changes:** Use `animateColorAsState` for the circular checkbox when transitioning from empty to checked.
+4. **Navigation:** Smooth drawer open/close transitions.
+
+### Screen Structure & Layout
+**1. Navigation Drawer (Sidebar)**
+* Beautifully padded list items with rounded pill-shaped backgrounds for the active selection.
+* Items: Inbox (Blue icon), Today (Green icon), Scheduled (Purple icon), Labels (Brown icon).
+* Bottom: A "Settings" button to enter Nextcloud credentials.
+
+**2. Main Content Area**
+* **Top App Bar:** Transparent or surface-colored. Includes a Hamburger menu, the current category Title, and a subtle "Sync" icon that spins (`rotate` animation) during active background synchronization.
+* **Task List (`LazyColumn`):**
+    * Each task is a padded row.
+    * **Checkbox:** A custom, slightly large circular outline. When tapped, it smoothly fills with the accent color, shows a checkmark, and delays for 400ms before removing the task so the user sees the completion animation.
+    * **Text:** Task title.
+    * **Metadata:** Trailing relative due date (e.g., "in 2 days") in a subtle, muted color, paired with a tiny clock icon.
+* **Quick Add Inline:** A row pinned below the list or floating above the bottom. It features a simple `+` icon and a borderless `TextField`.
+* **Floating Action Button (FAB):** A prominent, large, rounded-corner or circular FAB in the bottom right using the accent blue (`#3584E4`).
+
+### Required Files to Generate
+Please provide the complete code for the following files:
+
+1.  **`build.gradle.kts` (App level):** Include dependencies for Compose, Material 3, Room, Coroutines, OkHttp, ViewModel, and Compose Animations.
+2.  **`TaskEntity.kt` (Room Model):** Fields for `id` (UUID), `caldavHref`, `eTag`, `title`, `isCompleted`, `dueDate`, `lastModifiedLocally`.
+3.  **`TaskDao.kt`:** Room DAO with local CRUD operations.
+4.  **`CalDavClient.kt`:** OkHttp client for handling basic `VTODO` iCalendar payloads, `PROPFIND`, and `PUT` requests to Nextcloud.
+5.  **`SyncRepository.kt`:** Bi-directional sync logic between Room and CalDavClient.
+6.  **`TaskViewModel.kt`:** Manages UI state, task flows, and triggers sync operations.
+7.  **`Theme.kt`, `Color.kt`, `Shape.kt`:** Define the sophisticated Light and Dark Material 3 palettes and rounded shapes described above.
+8.  **`SettingsScreen.kt`:** Modern UI to input Nextcloud Server URL, Username, and App Password (saved securely).
+9.  **`TaskListScreen.kt`:** The main UI, containing the `LazyColumn`, layout modifiers, custom animated checkboxes, and inline Quick Add.
+10. **`MainActivity.kt` & `PlanifyApp.kt`:** The entry point orchestrating the Navigation Drawer, Top Bar, and routing.
+
+Ensure the Compose UI code heavily utilizes `Modifier.animate*` and Material 3 design tokens, the CalDAV logic is robust enough for a baseline implementation, and the project compiles cleanly.

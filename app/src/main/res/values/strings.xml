@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Planify</string>
+    <string name="app_description">Plan your tasks, achieve your goals</string>
+
+    <!-- Navigation -->
+    <string name="nav_home">Home</string>
+    <string name="nav_tasks">Tasks</string>
+    <string name="nav_calendar">Calendar</string>
+    <string name="nav_settings">Settings</string>
+
+    <!-- Actions -->
+    <string name="action_add_task">Add Task</string>
+    <string name="action_edit">Edit</string>
+    <string name="action_delete">Delete</string>
+    <string name="action_save">Save</string>
+    <string name="action_cancel">Cancel</string>
+    <string name="action_done">Done</string>
+
+    <!-- Task -->
+    <string name="task_title_hint">Task title</string>
+    <string name="task_description_hint">Add a description…</string>
+    <string name="task_due_date">Due date</string>
+    <string name="task_priority">Priority</string>
+    <string name="task_no_tasks">No tasks yet. Tap + to add one!</string>
+
+    <!-- Priority -->
+    <string name="priority_low">Low</string>
+    <string name="priority_medium">Medium</string>
+    <string name="priority_high">High</string>
+    <string name="priority_urgent">Urgent</string>
+
+    <!-- Settings -->
+    <string name="settings_theme">Theme</string>
+    <string name="settings_notifications">Notifications</string>
+    <string name="settings_about">About</string>
+</resources>
