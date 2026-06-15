@@ -17,6 +17,11 @@ out/
 # Gradle files
 .gradle/
 build/
+gradlew
+gradlew.bat
+gradle/
+gradle-*
+*.zip
 
 # Local configuration file
 local.properties
