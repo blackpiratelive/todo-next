@@ -71,15 +71,7 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
         _isSyncing,
         _syncError,
         taskDao.getAllLabels()
-    ) { values ->
-        @Suppress("UNCHECKED_CAST")
-        val tasks = values[0] as List<TaskEntity>
-        val filter = values[1] as TaskFilter
-        val syncing = values[2] as Boolean
-        val error = values[3] as String?
-        @Suppress("UNCHECKED_CAST")
-        val labels = values[4] as List<String>
-
+    ) { tasks, filter, syncing, error, labels ->
         TaskListState(
             tasks = tasks,
             labels = labels,
