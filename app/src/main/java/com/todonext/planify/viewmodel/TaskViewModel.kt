@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import java.util.Calendar
 
 data class TaskListState(
     val tasks: List<TaskEntity> = emptyList(),
@@ -33,7 +34,7 @@ enum class TaskFilter {
 @OptIn(ExperimentalCoroutinesApi::class)
 class TaskViewModel(application: Application) : AndroidViewModel(application) {
 
-    private val database: AppDatabase = AppDatabase.getDatabase(application)
+    private val database: AppDatabase = AppDatabase.getInstance(application)
     private val taskDao: TaskDao = database.taskDao()
     private val preferencesManager: PreferencesManager = PreferencesManager(application)
     private val syncRepository: SyncRepository = SyncRepository(taskDao, preferencesManager)
@@ -44,12 +45,21 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
     private val _isSyncing = MutableStateFlow(false)
     private val _syncError = MutableStateFlow<String?>(null)
 
+    private fun endOfTodayMillis(): Long {
+        return Calendar.getInstance().apply {
+            set(Calendar.HOUR_OF_DAY, 23)
+            set(Calendar.MINUTE, 59)
+            set(Calendar.SECOND, 59)
+            set(Calendar.MILLISECOND, 999)
+        }.timeInMillis
+    }
+
     private val tasksFlow = combine(_currentFilter, currentLabelFilter) { filter, label ->
         Pair(filter, label)
     }.flatMapLatest { (filter, label) ->
         when (filter) {
-            TaskFilter.INBOX -> taskDao.getInboxTasks()
-            TaskFilter.TODAY -> taskDao.getTodayTasks()
+            TaskFilter.INBOX -> taskDao.getActiveTasks()
+            TaskFilter.TODAY -> taskDao.getTodayTasks(endOfTodayMillis())
             TaskFilter.SCHEDULED -> taskDao.getScheduledTasks()
             TaskFilter.LABEL -> taskDao.getTasksByLabel(label ?: "")
         }
@@ -61,14 +71,22 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
         _isSyncing,
         _syncError,
         taskDao.getAllLabels()
-    ) { tasks, filter, syncing, error, labels ->
+    ) { values ->
+        @Suppress("UNCHECKED_CAST")
+        val tasks = values[0] as List<TaskEntity>
+        val filter = values[1] as TaskFilter
+        val syncing = values[2] as Boolean
+        val error = values[3] as String?
+        @Suppress("UNCHECKED_CAST")
+        val labels = values[4] as List<String>
+
         TaskListState(
             tasks = tasks,
             labels = labels,
             currentFilter = filter,
             isSyncing = syncing,
             syncError = error,
-            isServerConfigured = preferencesManager.getServerUrl().isNotEmpty()
+            isServerConfigured = preferencesManager.isConfigured
         )
     }.stateIn(
         scope = viewModelScope,
@@ -91,11 +109,10 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
                 title = title,
                 dueDate = dueDate,
                 label = label,
-                createdAt = System.currentTimeMillis(),
                 lastModifiedLocally = System.currentTimeMillis(),
                 isSynced = false
             )
-            taskDao.insert(task)
+            taskDao.insertTask(task)
         }
     }
 
@@ -106,13 +123,13 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
                 lastModifiedLocally = System.currentTimeMillis(),
                 isSynced = false
             )
-            taskDao.update(updatedTask)
+            taskDao.updateTask(updatedTask)
         }
     }
 
     fun deleteTask(task: TaskEntity) {
         viewModelScope.launch {
-            taskDao.delete(task)
+            taskDao.deleteTask(task)
         }
     }
 
@@ -121,7 +138,10 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
             _isSyncing.value = true
             _syncError.value = null
             try {
-                syncRepository.sync()
+                val result = syncRepository.sync()
+                if (!result.success && result.errors.isNotEmpty()) {
+                    _syncError.value = result.errors.first()
+                }
             } catch (e: Exception) {
                 _syncError.value = e.message ?: "Sync failed"
             } finally {
@@ -130,15 +150,15 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun getServerUrl(): String = preferencesManager.getServerUrl()
+    fun getServerUrl(): String = preferencesManager.serverUrl
 
-    fun getUsername(): String = preferencesManager.getUsername()
+    fun getUsername(): String = preferencesManager.username
 
-    fun getPassword(): String = preferencesManager.getPassword()
+    fun getPassword(): String = preferencesManager.password
 
     fun saveServerConfig(url: String, username: String, password: String) {
-        preferencesManager.saveServerUrl(url)
-        preferencesManager.saveUsername(username)
-        preferencesManager.savePassword(password)
+        preferencesManager.serverUrl = url
+        preferencesManager.username = username
+        preferencesManager.password = password
     }
 }
