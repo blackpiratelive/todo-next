@@ -2,34 +2,34 @@ package com.todonext.planify.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-// Dark Mode
-val DarkSurface = Color(0xFF1E1E1E)
-val DarkBackground = Color(0xFF25252D)
-val DarkSurfaceVariant = Color(0xFF2D2D35)
-val DarkOnSurface = Color(0xFFE8E8E8)
-val DarkOnSurfaceVariant = Color(0xFFA0A0A8)
-val DarkOutline = Color(0xFF3A3A42)
+// Dark Mode (Google Tasks Style)
+val DarkBackground = Color(0xFF131314)
+val DarkSurface = Color(0xFF1E1F20)
+val DarkSurfaceVariant = Color(0xFF25272A)
+val DarkOnSurface = Color(0xFFE3E2E6)
+val DarkOnSurfaceVariant = Color(0xFFC7C6CA)
+val DarkOutline = Color(0xFF44474F)
 
-// Light Mode
+// Light Mode (Google Tasks Style)
+val LightBackground = Color(0xFFF8F9FA)
 val LightSurface = Color(0xFFFFFFFF)
-val LightBackground = Color(0xFFF5F5F5)
-val LightSurfaceVariant = Color(0xFFEEEEEE)
-val LightOnSurface = Color(0xFF1A1A1A)
-val LightOnSurfaceVariant = Color(0xFF666666)
-val LightOutline = Color(0xFFDDDDDD)
+val LightSurfaceVariant = Color(0xFFF1F3F4)
+val LightOnSurface = Color(0xFF1F1F1F)
+val LightOnSurfaceVariant = Color(0xFF5F6368)
+val LightOutline = Color(0xFFE0E0E0)
 
 // Accent Colors
-val AccentBlue = Color(0xFF3584E4)
-val AccentBlueDark = Color(0xFF2A6BBF)
-val AccentBlueLight = Color(0xFF62A0ED)
+val AccentBlue = Color(0xFF1A73E8)      // Google Blue
+val AccentBlueDark = Color(0xFF1557B0)  // Darker Blue for Container
+val AccentBlueLight = Color(0xFF8AB4F8) // Pastel Blue for Dark Mode
 
 // Category Colors (for drawer icons)
-val InboxBlue = Color(0xFF3584E4)
-val TodayGreen = Color(0xFF33D17A)
-val ScheduledPurple = Color(0xFF9141AC)
-val LabelsBrown = Color(0xFFB5835A)
+val InboxBlue = Color(0xFF1A73E8)
+val TodayGreen = Color(0xFF1E8E3E)
+val ScheduledPurple = Color(0xFF9334E6)
+val LabelsBrown = Color(0xFFB06000)
 
 // Status Colors
-val CompletedGreen = Color(0xFF33D17A)
-val OverdueRed = Color(0xFFED333B)
-val WarningYellow = Color(0xFFF6D32D)
+val CompletedGreen = Color(0xFF1E8E3E)
+val OverdueRed = Color(0xFFD93025)
+val WarningYellow = Color(0xFFF9AB00)

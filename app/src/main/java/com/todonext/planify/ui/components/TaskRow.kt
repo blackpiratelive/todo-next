@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.PushPin
@@ -40,8 +41,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TextField
-import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -57,6 +56,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.todonext.planify.data.local.TaskEntity
 import com.todonext.planify.ui.theme.AccentBlue
+import com.todonext.planify.ui.theme.AccentBlueLight
 import com.todonext.planify.ui.theme.CompletedGreen
 import com.todonext.planify.ui.theme.OverdueRed
 
@@ -103,7 +103,7 @@ fun TaskRow(
                 .clickable { if (!isExpanded) onClick() },
             shape = RoundedCornerShape(16.dp),
             color = if (isExpanded) {
-                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+                MaterialTheme.colorScheme.surfaceVariant
             } else {
                 MaterialTheme.colorScheme.surface
             },
@@ -183,7 +183,7 @@ fun TaskRow(
                             imageVector = Icons.Outlined.PushPin,
                             contentDescription = "Pinned",
                             modifier = Modifier.size(16.dp),
-                            tint = AccentBlue
+                            tint = AccentBlueLight
                         )
                     }
                 }
@@ -207,34 +207,40 @@ fun TaskRow(
                             else MaterialTheme.colorScheme.primary
                         )
 
-                        Spacer(modifier = Modifier.width(12.dp))
+                        Spacer(modifier = Modifier.width(16.dp))
 
                         var titleText by remember { mutableStateOf(task.title) }
-                        TextField(
+                        BasicTextField(
                             value = titleText,
                             onValueChange = {
                                 titleText = it
                                 onUpdateTask(task.copy(title = it))
                             },
-                            placeholder = { Text("Task title") },
-                            modifier = Modifier.weight(1f),
-                            colors = TextFieldDefaults.colors(
-                                focusedContainerColor = Color.Transparent,
-                                unfocusedContainerColor = Color.Transparent,
-                                focusedIndicatorColor = Color.Transparent,
-                                unfocusedIndicatorColor = Color.Transparent
+                            textStyle = MaterialTheme.typography.bodyLarge.copy(
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurface
                             ),
                             singleLine = true,
-                            textStyle = MaterialTheme.typography.bodyLarge.copy(
-                                fontWeight = FontWeight.SemiBold
-                            )
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(vertical = 8.dp),
+                            decorationBox = { innerTextField ->
+                                if (titleText.isEmpty()) {
+                                    Text(
+                                        text = "Task title",
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                                    )
+                                }
+                                innerTextField()
+                            }
                         )
 
                         IconButton(onClick = { onUpdateTask(task.copy(isPinned = !task.isPinned)) }) {
                             Icon(
                                 imageVector = if (task.isPinned) Icons.Filled.PushPin else Icons.Outlined.PushPin,
                                 contentDescription = "Pin task",
-                                tint = if (task.isPinned) AccentBlue else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                                tint = if (task.isPinned) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
                             )
                         }
 
@@ -246,30 +252,30 @@ fun TaskRow(
                         }
                     }
 
-                    // Row 2: Description text field
+                    // Row 2: Description text field (clean BasicTextField)
                     var descText by remember { mutableStateOf(task.description ?: "") }
-                    TextField(
+                    BasicTextField(
                         value = descText,
                         onValueChange = {
                             descText = it
                             onUpdateTask(task.copy(description = it.ifBlank { null }))
                         },
-                        placeholder = {
-                            Text(
-                                "Description",
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
-                            )
-                        },
+                        textStyle = MaterialTheme.typography.bodyMedium.copy(
+                            color = MaterialTheme.colorScheme.onSurface
+                        ),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 8.dp),
-                        colors = TextFieldDefaults.colors(
-                            focusedContainerColor = Color.Transparent,
-                            unfocusedContainerColor = Color.Transparent,
-                            focusedIndicatorColor = Color.Transparent,
-                            unfocusedIndicatorColor = Color.Transparent
-                        ),
-                        textStyle = MaterialTheme.typography.bodyMedium
+                            .padding(horizontal = 8.dp, vertical = 4.dp),
+                        decorationBox = { innerTextField ->
+                            if (descText.isEmpty()) {
+                                Text(
+                                    text = "Description",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                                )
+                            }
+                            innerTextField()
+                        }
                     )
 
                     // Row 3: Date Title
@@ -318,7 +324,7 @@ fun TaskRow(
                             Text(
                                 text = if (task.dueDate != null) {
                                     val sdf = java.text.SimpleDateFormat("EEE, d MMM", java.util.Locale.getDefault())
-                                    "${sdf.format(java.util.Date(task.dueDate))} $dateText"
+                                    "${sdf.format(java.util.Date(task.dueDate))} ($dateText)"
                                 } else {
                                     "Set a due date"
                                 },
@@ -348,7 +354,7 @@ fun TaskRow(
                                 Icon(
                                     imageVector = Icons.Outlined.Label,
                                     contentDescription = "Labels",
-                                    tint = if (task.label != null) AccentBlue else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                                    tint = if (task.label != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                                 )
                                 // Label select dropdown
                                 DropdownMenu(
@@ -379,7 +385,7 @@ fun TaskRow(
                                     contentDescription = "Priority",
                                     tint = when (task.priority) {
                                         1 -> OverdueRed
-                                        5 -> AccentBlue
+                                        5 -> MaterialTheme.colorScheme.primary
                                         9 -> CompletedGreen
                                         else -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                                     }
